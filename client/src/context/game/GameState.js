@@ -66,7 +66,46 @@ const GameState = ({ history, children }) => {
 
       socket.on(TABLE_JOINED, ({ tables, tableId }) => {
         console.log(TABLE_JOINED, tables, tableId);
-        setCurrentTable(tables[tableId]);
+        // Server sends `tables` as an array (getCurrentTables()).
+        // The client previously treated `tables` like a keyed object and
+        // did `tables[tableId]` which yields `undefined` for IDs that
+        // don't match array indices (e.g. id=1 at index 0). Find by id.
+        const table = Array.isArray(tables)
+          ? tables.find((t) => t.id === tableId)
+          : tables && tables[tableId];
+
+        // The `tables` summary from the server does not include full
+        // runtime fields (seats, board, winMessages). Provide safe
+        // defaults so the UI doesn't read undefined fields while the
+        // real full `TABLE_UPDATED` arrives.
+        const tableWithDefaults = table
+          ? {
+              // copy any provided summary fields
+              ...table,
+              // runtime fields expected by the UI
+              board: table.board || [],
+              winMessages: table.winMessages || [],
+              seats: table.seats || {},
+              // players array used by GameStateInfo
+              players: table.players || [],
+              // other numeric fields UI reads
+              pot: typeof table.pot === 'number' ? table.pot : 0,
+              callAmount:
+                typeof table.callAmount === 'number' ? table.callAmount : 0,
+              minBet: typeof table.minBet === 'number' ? table.minBet : table.smallBlind || 0,
+              minRaise:
+                typeof table.minRaise === 'number'
+                  ? table.minRaise
+                  : table.minBet || table.smallBlind || 0,
+              // pots/sidepots and showdown/hand flags
+              mainPot: typeof table.mainPot === 'number' ? table.mainPot : table.pot || 0,
+              sidePots: Array.isArray(table.sidePots) ? table.sidePots : [],
+              wentToShowdown: !!table.wentToShowdown,
+              handOver: !!table.handOver,
+            }
+          : null;
+
+        setCurrentTable(tableWithDefaults);
       });
 
       socket.on(TABLE_LEFT, ({ tables, tableId }) => {
